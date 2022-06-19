@@ -11,24 +11,27 @@ mod vk16k33;
 mod app {
 
     use stm32f1xx_hal::{
-        gpio::{self, Alternate, Edge, ExtiPin, Input, OpenDrain, Output, Pin, PullDown, PushPull},
+        gpio::{self, Alternate, Edge, ExtiPin, Input, OpenDrain, Output, Pin, PullDown, PushPull, Analog},
         i2c::{BlockingI2c, Mode},
-        pac::{self, I2C1},
+        pac::{self, I2C1, ADC1},
         prelude::*,
-        timer::{CounterMs, Event},
+        timer::{CounterMs, Event}, adc::{Adc, Continuous, AdcPayload}, dma::RxDma,
     };
+    use heapless::String;
 
     use crate::glyph::{Glyph, Capitals};
     use crate::vk16k33;
 
     type ODPB6 = Pin<'B', 6, false, Alternate<OpenDrain>>;
     type ODPB7 = Pin<'B', 7, false, Alternate<OpenDrain>>;
+    type IAPA1 = Pin<'A', 1, false, Analog>;
 
     #[shared]
     struct Shared {
-        disp: vk16k33::DisplayBuff,
         i2c: BlockingI2c<I2C1, (ODPB6, ODPB7)>,
         led: gpio::PB1<Output<PushPull>>,
+        adc: RxDma<AdcPayload<ADC1, IAPA1, Continuous>, stm32f1xx_hal::dma::dma1::C1>,
+        to_draw: [Glyph; 4],
         led_state: bool,
     }
 
@@ -43,7 +46,7 @@ mod app {
         let mut flash = cx.device.FLASH.constrain();
         let rcc = cx.device.RCC.constrain();
 
-        let clocks = rcc.cfgr.sysclk(48.MHz()).freeze(&mut flash.acr);
+        let clocks = rcc.cfgr.sysclk(48.MHz()).adcclk(2.MHz()).freeze(&mut flash.acr);
         // let mut sys_cfg = cx.device.
         // let mut nvic = cx.core.NVIC.stir.
 
@@ -54,6 +57,12 @@ mod app {
         let mut gpa = cx.device.GPIOA.split();
 
         let mut touch = gpa.pa10.into_pull_down_input(&mut gpa.crh);
+
+        let analog = gpa.pa1.into_analog(&mut gpa.crl);
+        let dma = cx.device.DMA1.split().1;
+
+        let adc = Adc::adc1(cx.device.ADC1, clocks);
+        let adc_dma = adc.with_dma(analog, dma);
 
         let mut afio = cx.device.AFIO.constrain();
         let scl1 = gpb.pb6.into_alternate_open_drain(&mut gpb.crl);
@@ -84,15 +93,15 @@ mod app {
         timer.start(1.secs()).unwrap();
         timer.listen(Event::Update);
 
-        let mut disp = [0; (vk16k33::DISP_SIZE + 1) as usize];
-        disp[0] = vk16k33::DISP_SIZE;
+        let mut disp:[Glyph; 4];
 
         (
             Shared {
                 led: gled,
                 led_state: false,
-                disp,
                 i2c,
+                adc: adc_dma,
+                to_draw: disp
             },
             Local {
                 timer,
@@ -102,15 +111,19 @@ mod app {
         )
     }
 
-    #[idle(shared=[i2c, disp])]
+    #[idle(shared=[i2c, adc, to_draw])]
     fn idle(mut cx: idle::Context) -> ! {
         cx.shared.i2c.lock(|i2c| {
-            cx.shared.disp.lock(|disp| {
-                vk16k33::init(i2c);
-                vk16k33::clear(i2c);
-            });
+            vk16k33::init(i2c);
+            vk16k33::clear(i2c);
         });
         loop {
+            cx.shared.adc.lock(|adc|{
+                let mut buf = [0u16; 4];
+                while !(*adc).read(&mut buf).is_done(){
+                    cortex_m::asm::wfi();
+                };
+            });
             cortex_m::asm::wfi();
         }
     }
@@ -120,21 +133,11 @@ mod app {
     //     cx.shared.touch.read();
     // }
 
-    #[task(binds=TIM1_UP, priority=1, local=[timer, count:u8=0], shared=[led, i2c])]
+    #[task(binds=TIM1_UP, priority=1, local=[timer, count:u8=0], shared=[led, i2c, to_draw])]
     fn tick(mut cx: tick::Context) {
         cx.shared.i2c.lock(|i2c| {
 
-            vk16k33::draw_glyph(i2c, 0b0000000000111111, *cx.local.count);
-            vk16k33::draw_glyph(i2c, Capitals::L as u16, 0);
-            vk16k33::draw_glyph(i2c, Capitals::O as u16, 1);
-            vk16k33::draw_glyph(i2c, Capitals::V as u16, 2);
-            vk16k33::draw_glyph(i2c, Capitals::E as u16, 3);
             
-            vk16k33::clear(i2c);
-            vk16k33::draw_glyph(i2c, Capitals::L as u16, 0);
-            vk16k33::draw_glyph(i2c, Capitals::I as u16, 1);
-            vk16k33::draw_glyph(i2c, Capitals::L as u16, 2);
-            vk16k33::draw_glyph(i2c, Capitals::I as u16, 3);
         });
 
         // Count used to change the timer update frequency
