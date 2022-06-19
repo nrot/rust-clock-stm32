@@ -1,0 +1,21 @@
+[package]
+name = "clock-stm32"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+embedded-hal = "0.2.3"
+nb = "1.0"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+# Panic behaviour, see https://crates.io/keywords/panic-impl for alternatives
+panic-halt = "0.2.0"
+cortex-m-rtic = { version = "1.1.0"}
+
+[dependencies.stm32f1xx-hal]
+version = "0.9.0"
+features = ["rt", "stm32f103", "medium"]
+git="https://github.com/stm32-rs/stm32f1xx-hal"
+branch="i2c-error"

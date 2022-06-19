@@ -1,0 +1,42 @@
+{
+    // Используйте IntelliSense, чтобы узнать о возможных атрибутах.
+    // Наведите указатель мыши, чтобы просмотреть описания существующих атрибутов.
+    // Для получения дополнительной информации посетите: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            /* Configuration for the STM32F303 Discovery board */
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "Debug (OpenOCD)",
+            "servertype": "openocd",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "rust: cargo build",
+            "runToMain": true,
+            "executable": "./target/thumbv7m-none-eabi/debug/clock-stm32",
+            /* Run `cargo build --example itm` and uncomment this line to run itm example */
+            // "executable": "./target/thumbv7em-none-eabihf/debug/examples/itm",
+            "device": "STM32F103C8T6",
+            "configFiles": [
+                "${workspaceRoot}/xpack-openocd-0.11.0-4/scripts/interface/stlink.cfg",
+                "${workspaceRoot}/xpack-openocd-0.11.0-4/scripts/target/stm32f1x.cfg"
+            ],
+            "svdFile": "${workspaceRoot}/STM32F1_svd_V1.2/STM32F103.svd",
+            // "searchDir":["${workspaceRoot}/xpack-openocd-0.11.0-4/scripts/"],
+            // "showDevDebugOutput": "parsed",
+            "swoConfig": {
+                "enabled": true,
+                "cpuFrequency": 8000000,
+                "swoFrequency": 2000000,
+                "source": "probe",
+                "decoders": [
+                    { "type": "console", "label": "ITM", "port": 0 }
+                ]
+            },
+            "gdbPath": "C:\\Program Files (x86)\\GNU Arm Embedded Toolchain\\10 2021.10\\bin\\arm-none-eabi-gdb.exe",
+            "serverpath": "./xpack-openocd-0.11.0-4/bin/openocd.exe",
+            // "interface": "swd"
+            // "serverArgs":["-c", "reset"]
+        }
+    ]
+}
