@@ -18,6 +18,7 @@ mod app {
         timer::{CounterMs, Event}, adc::{Adc, Continuous, AdcPayload}, dma::RxDma,
     };
     use heapless::String;
+    use core::fmt::Write;
 
     use crate::glyph::{Glyph, Capitals};
     use crate::vk16k33;
@@ -30,7 +31,6 @@ mod app {
     struct Shared {
         i2c: BlockingI2c<I2C1, (ODPB6, ODPB7)>,
         led: gpio::PB1<Output<PushPull>>,
-        adc: RxDma<AdcPayload<ADC1, IAPA1, Continuous>, stm32f1xx_hal::dma::dma1::C1>,
         to_draw: [Glyph; 4],
         led_state: bool,
     }
@@ -39,7 +39,10 @@ mod app {
     struct Local {
         timer: CounterMs<pac::TIM1>,
         touch: gpio::PA10<Input<PullDown>>,
+        adc: Adc<ADC1>,
+        analog: IAPA1,
     }
+    
 
     #[init]
     fn init(mut cx: init::Context) -> (Shared, Local, init::Monotonics) {
@@ -58,11 +61,15 @@ mod app {
 
         let mut touch = gpa.pa10.into_pull_down_input(&mut gpa.crh);
 
-        let analog = gpa.pa1.into_analog(&mut gpa.crl);
+        let mut analog = gpa.pa1.into_analog(&mut gpa.crl);
         let dma = cx.device.DMA1.split().1;
 
-        let adc = Adc::adc1(cx.device.ADC1, clocks);
-        let adc_dma = adc.with_dma(analog, dma);
+        let mut adc = Adc::adc1(cx.device.ADC1, clocks);
+        // let adc_dma = adc.with_dma(analog, dma);
+        adc.set_continuous_mode(true);
+        // adc.start_conversion();
+        // static mut buf: [u16; 2] = [0u16; 2];
+        // let b :u16 = adc.read_abs_mv(&mut analog).unwrap();
 
         let mut afio = cx.device.AFIO.constrain();
         let scl1 = gpb.pb6.into_alternate_open_drain(&mut gpb.crl);
@@ -93,37 +100,58 @@ mod app {
         timer.start(1.secs()).unwrap();
         timer.listen(Event::Update);
 
-        let mut disp:[Glyph; 4];
+        let disp:[Glyph; 4] = [0u16.into(); 4];
 
         (
             Shared {
                 led: gled,
                 led_state: false,
                 i2c,
-                adc: adc_dma,
-                to_draw: disp
+                to_draw: disp,
             },
             Local {
                 timer,
                 touch,
+                adc,
+                analog
             },
             init::Monotonics(),
         )
     }
 
-    #[idle(shared=[i2c, adc, to_draw])]
+    #[idle(shared=[i2c, to_draw], local=[adc, analog])]
     fn idle(mut cx: idle::Context) -> ! {
         cx.shared.i2c.lock(|i2c| {
             vk16k33::init(i2c);
             vk16k33::clear(i2c);
         });
+        let mut a = cx.local.adc;
+        let mut analog = cx.local.analog;
+        const BUFF_SIZE: u8= 16;
+        let mut adc_buff = [0u16; BUFF_SIZE as usize];
+        let mut adc_buff_p = 0u8;
+        let mut sm = 0;
         loop {
-            cx.shared.adc.lock(|adc|{
-                let mut buf = [0u16; 4];
-                while !(*adc).read(&mut buf).is_done(){
-                    cortex_m::asm::wfi();
-                };
-            });
+            let b: u16 = a.read(analog).unwrap();
+            if adc_buff_p < BUFF_SIZE{
+                adc_buff[adc_buff_p as usize] = b;
+                adc_buff_p += 1;
+            } else {
+                sm = (adc_buff.iter().cloned().map(u64::from).sum::<u64>() / (BUFF_SIZE as u64) / 16u64) as u16;
+                adc_buff_p = 0;
+                cx.shared.to_draw.lock(|to_draw|{
+                    let mut data: String<4> = String::new();
+                    let _ = write!(data, "{:>4}", sm);
+                    //TODO: End this
+                });
+            }
+            // a.circ_read(&mut buf);
+            // cx.shared.adc.lock(|adc|{
+            //     let mut buf = [0u16; 4];
+            //     while !(*adc).read(&mut buf).is_done(){
+            //         cortex_m::asm::wfi();
+            //     };
+            // });
             cortex_m::asm::wfi();
         }
     }

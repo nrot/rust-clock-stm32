@@ -34,6 +34,7 @@ pub enum Symbols{
     Pipe = 0b001001000000000,
     RightBrace = 0b010010010001001,
     Tilde = 0b000110011000000,
+    Space = 0b0,
 }
 
 #[repr(u16)]
@@ -120,7 +121,14 @@ pub enum Glyph {
     Symbols(Symbols),
     Capitals(Capitals),
     Lowercase(Lowercase),
-    Digits(Digits)
+    Digits(Digits),
+    Custom(u16),
+}
+
+impl From<u16> for Glyph{
+    fn from(v: u16) -> Self {
+        Glyph::Custom(v)
+    }
 }
 
 impl From<char> for Glyph {
@@ -266,6 +274,7 @@ impl TryFrom<char> for Symbols{
             '|' => Ok(Symbols::Pipe),
             '}' => Ok(Symbols::RightBrace),
             '~' => Ok(Symbols::Tilde),
+            ' ' => Ok(Symbols::Space),
             _ => Err("Invalid symbol glyph"),
         }
     }
