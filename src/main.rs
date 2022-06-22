@@ -19,8 +19,9 @@ mod app {
     };
     use heapless::String;
     use core::fmt::Write;
+    use core::iter::Iterator;
 
-    use crate::glyph::{Glyph, Capitals};
+    use crate::glyph::{Glyph, Capitals, Symbols};
     use crate::vk16k33;
 
     type ODPB6 = Pin<'B', 6, false, Alternate<OpenDrain>>;
@@ -61,8 +62,8 @@ mod app {
 
         let mut touch = gpa.pa10.into_pull_down_input(&mut gpa.crh);
 
-        let mut analog = gpa.pa1.into_analog(&mut gpa.crl);
-        let dma = cx.device.DMA1.split().1;
+        let analog = gpa.pa1.into_analog(&mut gpa.crl);
+        // let dma = cx.device.DMA1.split().1;
 
         let mut adc = Adc::adc1(cx.device.ADC1, clocks);
         // let adc_dma = adc.with_dma(analog, dma);
@@ -125,8 +126,8 @@ mod app {
             vk16k33::init(i2c);
             vk16k33::clear(i2c);
         });
-        let mut a = cx.local.adc;
-        let mut analog = cx.local.analog;
+        let a = cx.local.adc;
+        let analog = cx.local.analog;
         const BUFF_SIZE: u8= 16;
         let mut adc_buff = [0u16; BUFF_SIZE as usize];
         let mut adc_buff_p = 0u8;
@@ -142,16 +143,14 @@ mod app {
                 cx.shared.to_draw.lock(|to_draw|{
                     let mut data: String<4> = String::new();
                     let _ = write!(data, "{:>4}", sm);
-                    //TODO: End this
+                    data.as_bytes().iter().enumerate().map(|(i, v)|{
+                        (i, Glyph::from(*v as char))
+                    }).fold(to_draw , |a, (i, b)|{
+                        a[i] = b;
+                        a
+                    });
                 });
             }
-            // a.circ_read(&mut buf);
-            // cx.shared.adc.lock(|adc|{
-            //     let mut buf = [0u16; 4];
-            //     while !(*adc).read(&mut buf).is_done(){
-            //         cortex_m::asm::wfi();
-            //     };
-            // });
             cortex_m::asm::wfi();
         }
     }
@@ -164,8 +163,11 @@ mod app {
     #[task(binds=TIM1_UP, priority=1, local=[timer, count:u8=0], shared=[led, i2c, to_draw])]
     fn tick(mut cx: tick::Context) {
         cx.shared.i2c.lock(|i2c| {
-
-            
+            cx.shared.to_draw.lock(|to_draw|{
+                for (i, g) in to_draw.iter().enumerate(){
+                    vk16k33::draw_glyph(i2c, u16::from(*g), i as u8);
+                }
+            })
         });
 
         // Count used to change the timer update frequency

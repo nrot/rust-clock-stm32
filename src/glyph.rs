@@ -126,8 +126,22 @@ pub enum Glyph {
 }
 
 impl From<u16> for Glyph{
+    #[inline(always)]
     fn from(v: u16) -> Self {
         Glyph::Custom(v)
+    }
+}
+
+impl From<Glyph> for u16{
+    #[inline(always)]
+    fn from(v: Glyph) -> Self {
+        match v{
+            Glyph::Symbols(s) => s as u16,
+            Glyph::Capitals(s) => s as u16,
+            Glyph::Lowercase(s) => s as u16,
+            Glyph::Digits(s) => s as u16,
+            Glyph::Custom(s) => s as u16,
+        } 
     }
 }
 

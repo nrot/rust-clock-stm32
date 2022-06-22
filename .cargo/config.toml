@@ -5,6 +5,8 @@ runner = 'arm-none-eabi-gdb'
 rustflags = [
   "-C", "link-arg=-Tlink.x",
 ]
+[profile.dev]
+opt-level = "z"
 
 [build]
 target = "thumbv7m-none-eabi"
